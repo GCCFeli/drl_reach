@@ -1,7 +1,7 @@
 [//]: # (Image References)
 
-[image1]: Environment.Gif "Environment Description"
-[image2]: Demo.gif "Demo"
+[image1]: https://github.com/GCCFeli/drl_reacher/blob/master/Environment.gif?raw=true "Environment Description"
+[image2]: https://github.com/GCCFeli/drl_reacher/blob/master/Demo.gif?raw=true "Demo"
 
 # Project: Reacher
 

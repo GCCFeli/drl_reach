@@ -1,7 +1,7 @@
 [//]: # (Image References)
 
-[image1]: Rewards.png "Rewards" 
-[image2]: Demo.gif "Result"  
+[image1]: https://github.com/GCCFeli/drl_reacher/blob/master/Rewards.png?raw=true "Rewards" 
+[image2]: https://github.com/GCCFeli/drl_reacher/blob/master/Demo.gif?raw=true "Result"  
 
 # Report
 
