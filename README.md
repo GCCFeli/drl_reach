@@ -54,7 +54,7 @@ In this solution, `option 2 (20 agents)` is chosen.
 1. Follow the step 4 `Train the agent` in `Reacher_Train.ipynb` to train the agent. Training algorithm is DDPG with replay buffer and soft update.
 2. Training is expected to be done in 200 episodes.
 3. The trained weights will be saved in `checkpoint_actor.pth` and `checkpoint_critic.pth`.
-4. Follow the steps in and then run step `5` to watch a trained agent.
+4. Follow the steps in `Reacher_Test.ipynb` to watch a trained agent.
 
 ### Demo for Trained Agent
 
