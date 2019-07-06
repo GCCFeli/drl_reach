@@ -1,6 +1,6 @@
 [//]: # (Image References)
 
-[image1]: https://s3.cn-north-1.amazonaws.com.cn/u-img/5464e11b-d337-48a3-9e50-a1c4cb4353a0 "Environment Description"
+[image1]: Environment.Gif "Environment Description"
 [image2]: Demo.gif "Demo"
 
 # Project: Reacher
