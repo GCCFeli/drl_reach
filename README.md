@@ -1,7 +1,7 @@
 [//]: # (Image References)
 
 [image1]: https://s3.cn-north-1.amazonaws.com.cn/u-img/5464e11b-d337-48a3-9e50-a1c4cb4353a0 "Environment Description"
-[image2]: https://github.com/GCCFeli/drl_navigation/blob/master/Navigation.gif?raw=true "Demo"
+[image2]: Demo.gif "Demo"
 
 # Project: Reacher
 

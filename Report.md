@@ -1,7 +1,7 @@
 [//]: # (Image References)
 
 [image1]: Rewards.png "Rewards" 
-[image2]: https://github.com/GCCFeli/drl_navigation/blob/master/Navigation.gif?raw=true "Result"  
+[image2]: Demo.gif "Result"  
 
 # Report
 
