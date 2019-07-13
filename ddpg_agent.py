@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import copy
+from segment_tree import SumSegmentTree, MinSegmentTree
 from collections import namedtuple, deque
 
 from model import Actor, Critic
@@ -53,18 +54,18 @@ class Agent():
         self.noise_epsilon = 1
 
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, random_seed)
+        #self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, random_seed)
+        self.memory = PrioritizedReplayMemory(BUFFER_SIZE)
     
     def step(self, states, actions, rewards, next_states, dones):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
         for i in range(self.num_agents): 
-            self.memory.add(states[i], actions[i], rewards[i], next_states[i], dones[i])
+            self.memory.push(states[i], actions[i], rewards[i], next_states[i], dones[i])
 
         # Learn, if enough samples are available in memory
-        if len(self.memory) > BATCH_SIZE:
-            experiences = self.memory.sample()
-            self.learn(experiences, GAMMA)
+        if self.memory._next_idx > BATCH_SIZE:
+            self.learn(GAMMA)
 
     def act(self, states, add_noise=True):
         """Returns actions for given state as per current policy."""
@@ -80,7 +81,7 @@ class Agent():
     def reset(self):
         self.noise.reset()
 
-    def learn(self, experiences, gamma):
+    def learn(self, gamma):
         """Update policy and value parameters using given batch of experience tuples.
         Q_targets = r + γ * critic_target(next_state, actor_target(next_state))
         where:
@@ -89,9 +90,9 @@ class Agent():
 
         Params
         ======
-            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples 
             gamma (float): discount factor
         """
+        experiences, indices, weights = self.memory.sample(BATCH_SIZE)
         states, actions, rewards, next_states, dones = experiences
 
         # ---------------------------- update critic ---------------------------- #
@@ -102,7 +103,13 @@ class Agent():
         Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
         # Compute critic loss
         Q_expected = self.critic_local(states, actions)
-        critic_loss = F.mse_loss(Q_expected, Q_targets)
+
+        diff = Q_expected - Q_targets
+        self.memory.update_priorities(indices, diff.detach().squeeze().abs().cpu().numpy().tolist())
+
+        critic_loss = F.mse_loss(Q_expected, Q_targets).squeeze() * weights
+        critic_loss = critic_loss.mean()
+        
         # Minimize the loss
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
@@ -157,6 +164,92 @@ class OUNoise:
         dx = self.theta * (self.mu - x) + self.sigma * (np.random.rand(*x.shape)-0.5)
         self.state = x + dx
         return self.state
+
+class PrioritizedReplayMemory:
+    def __init__(self, size, alpha=0.6, beta_start=0.4, beta_frames=100000):
+        super(PrioritizedReplayMemory, self).__init__()
+        self._storage = []
+        self._maxsize = size
+        self._next_idx = 0
+
+        assert alpha >= 0
+        self._alpha = alpha
+
+        self.beta_start = beta_start
+        self.beta_frames = beta_frames
+        self.frame=1
+
+        it_capacity = 1
+        while it_capacity < size:
+            it_capacity *= 2
+
+        self._it_sum = SumSegmentTree(it_capacity)
+        self._it_min = MinSegmentTree(it_capacity)
+        self._max_priority = 1.0
+        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+
+    def beta_by_frame(self, frame_idx):
+        return min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
+
+    def push(self, state, action, reward, next_state, done):
+        idx = self._next_idx
+
+        if self._next_idx >= len(self._storage):
+            self._storage.append(self.experience(state, action, reward, next_state, done))
+        else:
+            self._storage[self._next_idx] = self.experience(state, action, reward, next_state, done)
+        self._next_idx = (self._next_idx + 1) % self._maxsize
+
+
+        self._it_sum[idx] = self._max_priority ** self._alpha
+        self._it_min[idx] = self._max_priority ** self._alpha
+
+    def _encode_sample(self, idxes):
+        states = torch.from_numpy(np.vstack([self._storage[i].state for i in idxes])).float().to(device)
+        actions = torch.from_numpy(np.vstack([self._storage[i].action for i in idxes])).float().to(device)
+        rewards = torch.from_numpy(np.vstack([self._storage[i].reward for i in idxes])).float().to(device)
+        next_states = torch.from_numpy(np.vstack([self._storage[i].next_state for i in idxes])).float().to(device)
+        dones = torch.from_numpy(np.vstack([self._storage[i].done for i in idxes]).astype(np.uint8)).float().to(device)
+        return (states, actions, rewards, next_states, dones)
+
+    def _sample_proportional(self, batch_size):
+        res = []
+        for _ in range(batch_size):
+            mass = random.random() * self._it_sum.sum(0, len(self._storage) - 1)
+            idx = self._it_sum.find_prefixsum_idx(mass)
+            res.append(idx)
+        return res
+
+    def sample(self, batch_size):
+        idxes = self._sample_proportional(batch_size)
+
+        weights = []
+
+        #find smallest sampling prob: p_min = smallest priority^alpha / sum of priorities^alpha
+        p_min = self._it_min.min() / self._it_sum.sum()
+
+        beta = self.beta_by_frame(self.frame)
+        self.frame+=1
+        
+        #max_weight given to smallest prob
+        max_weight = (p_min * len(self._storage)) ** (-beta)
+
+        for idx in idxes:
+            p_sample = self._it_sum[idx] / self._it_sum.sum()
+            weight = (p_sample * len(self._storage)) ** (-beta)
+            weights.append(weight / max_weight)
+        weights = torch.tensor(weights, device=device, dtype=torch.float) 
+        encoded_sample = self._encode_sample(idxes)
+        return encoded_sample, idxes, weights
+
+    def update_priorities(self, idxes, priorities):
+        assert len(idxes) == len(priorities)
+        for idx, priority in zip(idxes, priorities):
+            assert 0 <= idx < len(self._storage)
+            self._it_sum[idx] = (priority+1e-5) ** self._alpha
+            self._it_min[idx] = (priority+1e-5) ** self._alpha
+
+            self._max_priority = max(self._max_priority, (priority+1e-5))
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
